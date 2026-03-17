@@ -52,7 +52,7 @@ function GreenGround({ onClick }: { onClick?: (x: number, z: number) => void }) 
       } : undefined}
     >
       <planeGeometry args={[2000, 2000]} />
-      <meshStandardMaterial color="#8a9e7a" roughness={0.95} metalness={0} />
+      <meshStandardMaterial color="#f5f5f5" roughness={0.95} metalness={0} />
     </mesh>
   )
 }
@@ -117,8 +117,8 @@ function SunLight() {
     <directionalLight
       ref={ref}
       position={[60, 100, 50]}
-      intensity={2.2}
-      color="#fff6e0"
+      intensity={1.6}
+      color="#ffffff"
       castShadow
     />
   )
@@ -296,7 +296,7 @@ export default function App() {
           style={{ position: 'absolute', inset: 0 }}
         >
           {/* Overcast sky: cool blue from above, warm green-grey from ground */}
-          <hemisphereLight args={['#c8e0f0', '#8a9e7a', 0.9]} />
+          <hemisphereLight args={['#ddeeff', '#f5f5f5', 1.4]} />
           <SunLight />
 
           <Buildings positions={data.buildingPositions} />
