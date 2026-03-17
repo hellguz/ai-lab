@@ -13,3 +13,14 @@ html, body, #root {
   height: 100%;
   overflow: hidden;
 }
+
+/* Radix dialog animations */
+@keyframes fadeIn  { from { opacity: 0 } to { opacity: 1 } }
+@keyframes fadeOut { from { opacity: 1 } to { opacity: 0 } }
+@keyframes zoomIn  { from { opacity: 0; transform: translate(-50%, -50%) scale(0.95) } to { opacity: 1; transform: translate(-50%, -50%) scale(1) } }
+@keyframes zoomOut { from { opacity: 1; transform: translate(-50%, -50%) scale(1) } to { opacity: 0; transform: translate(-50%, -50%) scale(0.95) } }
+
+[data-state=open][data-radix-dialog-overlay]  { animation: fadeIn 0.15s ease }
+[data-state=closed][data-radix-dialog-overlay] { animation: fadeOut 0.15s ease }
+[data-state=open][data-radix-dialog-content]  { animation: zoomIn 0.15s ease }
+[data-state=closed][data-radix-dialog-content] { animation: zoomOut 0.15s ease }

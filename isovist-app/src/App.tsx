@@ -4,10 +4,15 @@ import { EffectComposer, N8AO } from '@react-three/postprocessing'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { parseData, computeIsovist, type ParsedData } from './utils/geo'
+import { HelpCircle, ArrowUp, ArrowDown, ArrowLeft, ArrowRight } from 'lucide-react'
+import Tutorial from './components/Tutorial'
 
-const EYE_HEIGHT = 0.20  // 1.65m × HEIGHT_SCALE(0.12) ≈ 0.20 Three.js units
-const EYE_W = 0.35
-const EYE_H = 0.30
+// ── Mobile detection ──────────────────────────────────────────────────────
+const isMobile = /Mobi|Android/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1
+
+const EYE_HEIGHT = 0.20
+const EYE_W = isMobile ? 0.50 : 0.35
+const EYE_H = isMobile ? 0.38 : 0.30
 const SKY_COLOR = new THREE.Color('#87ceeb')
 
 // ── Geometry components ───────────────────────────────────────────────────
@@ -47,7 +52,7 @@ function GreenGround({ onClick }: { onClick?: (x: number, z: number) => void }) 
         if (!down.current) return
         const dx = e.clientX - down.current.x
         const dy = e.clientY - down.current.y
-        if (Math.sqrt(dx * dx + dy * dy) < 5) onClick(e.point.x, e.point.z)
+        if (Math.sqrt(dx * dx + dy * dy) < 8) onClick(e.point.x, e.point.z)
         down.current = null
       } : undefined}
     >
@@ -80,7 +85,6 @@ function IsovistPolygon({ viewpoint, points }: { viewpoint: [number, number]; po
 
 function MarkerTracker({ posRef }: { posRef: React.MutableRefObject<[number, number]> }) {
   const ref = useRef<THREE.Mesh>(null)
-  // priority=0 → runs before rendering, updates mesh position each frame
   useFrame(() => {
     if (ref.current) {
       ref.current.position.x = posRef.current[0]
@@ -95,21 +99,22 @@ function MarkerTracker({ posRef }: { posRef: React.MutableRefObject<[number, num
   )
 }
 
-// ── Sun with properly configured soft shadow map ──────────────────────────
+// ── Sun – smaller shadow map on mobile ───────────────────────────────────
 
 function SunLight() {
   const ref = useRef<THREE.DirectionalLight>(null)
   useEffect(() => {
     const light = ref.current
     if (!light) return
-    light.shadow.mapSize.set(2048, 2048)
+    const mapSize = isMobile ? 512 : 2048
+    light.shadow.mapSize.set(mapSize, mapSize)
     light.shadow.camera.left   = -100
     light.shadow.camera.right  =  100
     light.shadow.camera.top    =  100
     light.shadow.camera.bottom = -100
     light.shadow.camera.near   = 0.1
     light.shadow.camera.far    = 600
-    light.shadow.radius = 4        // soft PCF blur
+    light.shadow.radius = 4
     light.shadow.bias   = -0.0005
     light.shadow.camera.updateProjectionMatrix()
   }, [])
@@ -119,28 +124,30 @@ function SunLight() {
       position={[60, 100, 50]}
       intensity={1.6}
       color="#ffffff"
-      castShadow
+      castShadow={!isMobile}
     />
   )
 }
 
-// ── Eye-level: controller (priority 0) ───────────────────────────────────
-// Handles WASD + mouse-look, updates shared refs and eyeCam each frame.
+// ── Eye-level controller ──────────────────────────────────────────────────
 
 interface EyeControllerProps {
   posRef: React.MutableRefObject<[number, number]>
   headingRef: React.MutableRefObject<number>
   pitchRef: React.MutableRefObject<number>
   eyeCam: THREE.PerspectiveCamera
+  mobileKeysRef: React.MutableRefObject<{ w: boolean; a: boolean; s: boolean; d: boolean }>
 }
 
-function EyeLevelController({ posRef, headingRef, pitchRef, eyeCam }: EyeControllerProps) {
+function EyeLevelController({ posRef, headingRef, pitchRef, eyeCam, mobileKeysRef }: EyeControllerProps) {
   const { gl } = useThree()
   const keys = useRef({ w: false, a: false, s: false, d: false })
   const drag = useRef<{ x: number; y: number } | null>(null)
+  const touchLook = useRef<{ id: number; x: number; y: number } | null>(null)
 
   useEffect(() => {
     const SENS = 0.004
+    const TOUCH_SENS = 0.006
 
     const inEye = (clientX: number, clientY: number) => {
       const r = gl.domElement.getBoundingClientRect()
@@ -148,6 +155,7 @@ function EyeLevelController({ posRef, headingRef, pitchRef, eyeCam }: EyeControl
              (clientY - r.top)  >= r.height * (1 - EYE_H)
     }
 
+    // Keyboard
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
       const k = e.key.toLowerCase() as keyof typeof keys.current
@@ -157,6 +165,8 @@ function EyeLevelController({ posRef, headingRef, pitchRef, eyeCam }: EyeControl
       const k = e.key.toLowerCase() as keyof typeof keys.current
       if (k in keys.current) keys.current[k] = false
     }
+
+    // Mouse look in eye view
     const onMouseDown = (e: MouseEvent) => {
       if (inEye(e.clientX, e.clientY)) drag.current = { x: e.clientX, y: e.clientY }
     }
@@ -169,30 +179,64 @@ function EyeLevelController({ posRef, headingRef, pitchRef, eyeCam }: EyeControl
     }
     const onMouseUp = () => { drag.current = null }
 
+    // Touch look in eye view
+    const onTouchStart = (e: TouchEvent) => {
+      for (const t of Array.from(e.changedTouches)) {
+        if (inEye(t.clientX, t.clientY) && !touchLook.current) {
+          touchLook.current = { id: t.identifier, x: t.clientX, y: t.clientY }
+        }
+      }
+    }
+    const onTouchMove = (e: TouchEvent) => {
+      if (!touchLook.current) return
+      for (const t of Array.from(e.changedTouches)) {
+        if (t.identifier === touchLook.current.id) {
+          headingRef.current -= (t.clientX - touchLook.current.x) * TOUCH_SENS
+          pitchRef.current   -= (t.clientY - touchLook.current.y) * TOUCH_SENS
+          pitchRef.current = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, pitchRef.current))
+          touchLook.current = { id: t.identifier, x: t.clientX, y: t.clientY }
+        }
+      }
+    }
+    const onTouchEnd = (e: TouchEvent) => {
+      if (!touchLook.current) return
+      const cur = touchLook.current
+      for (const t of Array.from(e.changedTouches)) {
+        if (t.identifier === cur.id) touchLook.current = null
+      }
+    }
+
     window.addEventListener('keydown', onKeyDown)
     window.addEventListener('keyup', onKeyUp)
     window.addEventListener('mousedown', onMouseDown)
     window.addEventListener('mousemove', onMouseMove)
     window.addEventListener('mouseup', onMouseUp)
+    gl.domElement.addEventListener('touchstart', onTouchStart, { passive: true })
+    gl.domElement.addEventListener('touchmove', onTouchMove, { passive: true })
+    gl.domElement.addEventListener('touchend', onTouchEnd, { passive: true })
     return () => {
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
       window.removeEventListener('mousedown', onMouseDown)
       window.removeEventListener('mousemove', onMouseMove)
       window.removeEventListener('mouseup', onMouseUp)
+      gl.domElement.removeEventListener('touchstart', onTouchStart)
+      gl.domElement.removeEventListener('touchmove', onTouchMove)
+      gl.domElement.removeEventListener('touchend', onTouchEnd)
     }
   }, [gl, headingRef, pitchRef])
 
-  // priority=0 → WASD movement runs before rendering
   useFrame((_, delta) => {
     const SPEED = 20
     const dt = Math.min(delta, 0.05)
     const h = headingRef.current
     let [px, pz] = posRef.current
-    if (keys.current.w) { px -= Math.sin(h) * SPEED * dt; pz -= Math.cos(h) * SPEED * dt }
-    if (keys.current.s) { px += Math.sin(h) * SPEED * dt; pz += Math.cos(h) * SPEED * dt }
-    if (keys.current.a) { px -= Math.cos(h) * SPEED * dt; pz += Math.sin(h) * SPEED * dt }
-    if (keys.current.d) { px += Math.cos(h) * SPEED * dt; pz -= Math.sin(h) * SPEED * dt }
+    const kb = keys.current
+    const mk = mobileKeysRef.current
+    if (kb.w || mk.w) { px -= Math.sin(h) * SPEED * dt; pz -= Math.cos(h) * SPEED * dt }
+    if (kb.s || mk.s) { px += Math.sin(h) * SPEED * dt; pz += Math.cos(h) * SPEED * dt }
+    if (kb.a || mk.a) { px -= Math.cos(h) * SPEED * dt; pz += Math.sin(h) * SPEED * dt }
+    if (kb.d || mk.d) { px += Math.cos(h) * SPEED * dt; pz -= Math.sin(h) * SPEED * dt }
     posRef.current = [px, pz]
 
     eyeCam.position.set(px, EYE_HEIGHT, pz)
@@ -203,9 +247,7 @@ function EyeLevelController({ posRef, headingRef, pitchRef, eyeCam }: EyeControl
   return null
 }
 
-// ── Eye-level: renderer (priority 2) ─────────────────────────────────────
-// Runs AFTER EffectComposer (priority=1). Draws the eye-level viewport
-// in the bottom-right corner via scissor, on top of the post-processed main view.
+// ── Eye-level renderer ────────────────────────────────────────────────────
 
 function EyeLevelRenderer({ eyeCam }: { eyeCam: THREE.PerspectiveCamera }) {
   useFrame(({ gl: renderer, scene, size }) => {
@@ -218,8 +260,6 @@ function EyeLevelRenderer({ eyeCam }: { eyeCam: THREE.PerspectiveCamera }) {
 
     const prevAutoClear = renderer.autoClear
     renderer.autoClear = false
-
-    // EffectComposer may have left a render target bound — reset to screen
     renderer.setRenderTarget(null)
 
     renderer.setScissorTest(true)
@@ -237,6 +277,49 @@ function EyeLevelRenderer({ eyeCam }: { eyeCam: THREE.PerspectiveCamera }) {
   return null
 }
 
+// ── Mobile D-pad ──────────────────────────────────────────────────────────
+
+function DPad({ keysRef }: { keysRef: React.MutableRefObject<{ w: boolean; a: boolean; s: boolean; d: boolean }> }) {
+  const set = (k: keyof typeof keysRef.current, v: boolean) => { keysRef.current[k] = v }
+
+  const btn = (k: keyof typeof keysRef.current, icon: React.ReactNode) => (
+    <button
+      onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); set(k, true) }}
+      onPointerUp={() => set(k, false)}
+      onPointerCancel={() => set(k, false)}
+      style={{
+        width: 48, height: 48, borderRadius: 10,
+        background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)',
+        backdropFilter: 'blur(6px)', color: 'white',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        cursor: 'pointer', touchAction: 'none', userSelect: 'none',
+        WebkitUserSelect: 'none',
+      }}
+    >
+      {icon}
+    </button>
+  )
+
+  return (
+    <div style={{
+      position: 'absolute',
+      bottom: `calc(${EYE_H * 100}% + 16px)`,
+      left: 16,
+      display: 'grid',
+      gridTemplateColumns: '48px 48px 48px',
+      gridTemplateRows: '48px 48px',
+      gap: 4,
+    }}>
+      <div />
+      {btn('w', <ArrowUp size={20} />)}
+      <div />
+      {btn('a', <ArrowLeft size={20} />)}
+      {btn('s', <ArrowDown size={20} />)}
+      {btn('d', <ArrowRight size={20} />)}
+    </div>
+  )
+}
+
 // ── App ───────────────────────────────────────────────────────────────────
 
 export default function App() {
@@ -244,12 +327,13 @@ export default function App() {
   const [loading, setLoading] = useState(true)
   const [isovistPts, setIsovistPts] = useState<[number, number][]>([])
   const [isovistOrigin, setIsovistOrigin] = useState<[number, number] | null>(null)
+  const [showTutorial, setShowTutorial] = useState(false)
 
   const posRef     = useRef<[number, number]>([0, 0])
   const headingRef = useRef(0)
   const pitchRef   = useRef(0)
+  const mobileKeysRef = useRef({ w: false, a: false, s: false, d: false })
 
-  // Eye camera created once, shared between controller and renderer
   const eyeCam = useMemo(() => {
     const c = new THREE.PerspectiveCamera(75, 1, 0.1, 2000)
     c.rotation.order = 'YXZ'
@@ -263,8 +347,17 @@ export default function App() {
     ]).then(([b, s]) => {
       setData(parseData(b, s))
       setLoading(false)
+      // Open tutorial on first visit
+      if (!localStorage.getItem('isovist-tutorial-seen')) {
+        setShowTutorial(true)
+      }
     })
   }, [])
+
+  const handleCloseTutorial = () => {
+    setShowTutorial(false)
+    localStorage.setItem('isovist-tutorial-seen', '1')
+  }
 
   const handlePlace = (x: number, z: number) => {
     if (!data) return
@@ -282,20 +375,27 @@ export default function App() {
         <div style={{
           position: 'absolute', inset: 0, display: 'flex',
           alignItems: 'center', justifyContent: 'center', zIndex: 10,
+          flexDirection: 'column', gap: 12,
         }}>
-          <p style={{ color: '#888', fontSize: 18, fontFamily: 'system-ui' }}>Loading city data…</p>
+          <div style={{
+            width: 36, height: 36, border: '3px solid rgba(255,255,255,0.15)',
+            borderTopColor: '#3b82f6', borderRadius: '50%',
+            animation: 'spin 0.8s linear infinite',
+          }} />
+          <p style={{ color: '#888', fontSize: 14, fontFamily: 'system-ui' }}>Loading city…</p>
+          <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
         </div>
       )}
 
       {!loading && data && (
         <Canvas
-          shadows="soft"
+          shadows={isMobile ? false : 'soft'}
           frameloop="always"
           camera={{ position: [0, 200, 200], fov: 45, near: 0.1, far: 5000 }}
-          gl={{ antialias: true }}
+          gl={{ antialias: !isMobile, powerPreference: 'high-performance' }}
+          dpr={[1, isMobile ? 1.5 : 2]}
           style={{ position: 'absolute', inset: 0 }}
         >
-          {/* Overcast sky: cool blue from above, warm green-grey from ground */}
           <hemisphereLight args={['#ddeeff', '#f5f5f5', 1.4]} />
           <SunLight />
 
@@ -309,50 +409,72 @@ export default function App() {
 
           <MarkerTracker posRef={posRef} />
 
-          {/* Eye-level: controller updates camera (priority=0), renderer draws scissor (priority=2) */}
-          <EyeLevelController posRef={posRef} headingRef={headingRef} pitchRef={pitchRef} eyeCam={eyeCam} />
+          <EyeLevelController
+            posRef={posRef}
+            headingRef={headingRef}
+            pitchRef={pitchRef}
+            eyeCam={eyeCam}
+            mobileKeysRef={mobileKeysRef}
+          />
           <EyeLevelRenderer eyeCam={eyeCam} />
 
-          {/* EffectComposer at priority=1 renders main view with N8AO */}
-          <EffectComposer>
-            <N8AO
-              aoRadius={6}
-              intensity={3}
-              distanceFalloff={1}
-              screenSpaceRadius={false}
-              color="black"
-            />
-          </EffectComposer>
+          {!isMobile && (
+            <EffectComposer>
+              <N8AO aoRadius={6} intensity={3} distanceFalloff={1} screenSpaceRadius={false} color="black" />
+            </EffectComposer>
+          )}
 
           <OrbitControls makeDefault />
         </Canvas>
       )}
 
-      {/* Top-left hint */}
-      <div style={{
-        position: 'absolute', top: 16, left: 16,
-        background: 'rgba(255,255,255,0.9)', backdropFilter: 'blur(8px)',
-        borderRadius: 8, padding: '10px 16px',
-        fontSize: 13, color: '#444', fontFamily: 'system-ui',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-        pointerEvents: 'none', userSelect: 'none', lineHeight: 1.6,
-      }}>
-        {isovistOrigin
-          ? <>Click ground · move viewpoint<br /><span style={{ color: '#888' }}>WASD · drag eye view to look</span></>
-          : 'Click the green ground to place viewpoint'}
-      </div>
+      {/* Hint panel – top left */}
+      {!loading && (
+        <div style={{
+          position: 'absolute', top: 12, left: 12,
+          background: 'rgba(15,15,15,0.75)', backdropFilter: 'blur(10px)',
+          borderRadius: 10, padding: '9px 14px',
+          fontSize: 12, color: '#ccc', fontFamily: 'system-ui',
+          border: '1px solid rgba(255,255,255,0.1)',
+          pointerEvents: 'none', userSelect: 'none', lineHeight: 1.7,
+          maxWidth: 220,
+        }}>
+          {isovistOrigin
+            ? <><span style={{ color: '#fff' }}>Tap ground</span> to move viewpoint<br /><span style={{ color: '#888' }}>Drag eye view to look · WASD to walk</span></>
+            : <><span style={{ color: '#fff' }}>Tap the ground</span><br />to place your viewpoint</>}
+        </div>
+      )}
 
-      {/* Eye-level panel label + border */}
+      {/* Tutorial button – top right */}
+      {!loading && (
+        <button
+          onClick={() => setShowTutorial(true)}
+          style={{
+            position: 'absolute', top: 12, right: 12,
+            width: 36, height: 36, borderRadius: 8,
+            background: 'rgba(15,15,15,0.75)', backdropFilter: 'blur(10px)',
+            border: '1px solid rgba(255,255,255,0.15)',
+            color: '#ccc', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            transition: 'background 0.15s',
+          }}
+          title="How to use"
+        >
+          <HelpCircle size={18} />
+        </button>
+      )}
+
+      {/* Eye-level label + border */}
       {!loading && (
         <>
           <div style={{
             position: 'absolute',
             bottom: `calc(${EYE_H * 100}% + 4px)`, right: 0,
             width: `${EYE_W * 100}%`, textAlign: 'center',
-            color: 'rgba(255,255,255,0.8)', fontSize: 11, fontFamily: 'system-ui',
+            color: 'rgba(255,255,255,0.6)', fontSize: 11, fontFamily: 'system-ui',
             pointerEvents: 'none', textShadow: '0 1px 3px rgba(0,0,0,0.7)',
           }}>
-            Eye-level · drag to look · WASD to walk
+            Eye-level · drag to look{!isMobile && ' · WASD to walk'}
           </div>
           <div style={{
             position: 'absolute', bottom: 0, right: 0,
@@ -362,6 +484,14 @@ export default function App() {
           }} />
         </>
       )}
+
+      {/* Mobile D-pad */}
+      {!loading && isMobile && (
+        <DPad keysRef={mobileKeysRef} />
+      )}
+
+      {/* Tutorial dialog */}
+      <Tutorial open={showTutorial} onClose={handleCloseTutorial} />
     </div>
   )
 }
