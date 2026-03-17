@@ -1,5 +1,6 @@
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
+import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import { EffectComposer, N8AO } from '@react-three/postprocessing'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
@@ -137,9 +138,10 @@ interface EyeControllerProps {
   pitchRef: React.MutableRefObject<number>
   eyeCam: THREE.PerspectiveCamera
   mobileKeysRef: React.MutableRefObject<{ w: boolean; a: boolean; s: boolean; d: boolean }>
+  orbitRef: React.MutableRefObject<OrbitControlsImpl | null>
 }
 
-function EyeLevelController({ posRef, headingRef, pitchRef, eyeCam, mobileKeysRef }: EyeControllerProps) {
+function EyeLevelController({ posRef, headingRef, pitchRef, eyeCam, mobileKeysRef, orbitRef }: EyeControllerProps) {
   const { gl } = useThree()
   const keys = useRef({ w: false, a: false, s: false, d: false })
   const drag = useRef<{ x: number; y: number } | null>(null)
@@ -168,7 +170,10 @@ function EyeLevelController({ posRef, headingRef, pitchRef, eyeCam, mobileKeysRe
 
     // Mouse look in eye view
     const onMouseDown = (e: MouseEvent) => {
-      if (inEye(e.clientX, e.clientY)) drag.current = { x: e.clientX, y: e.clientY }
+      if (inEye(e.clientX, e.clientY)) {
+        drag.current = { x: e.clientX, y: e.clientY }
+        if (orbitRef.current) orbitRef.current.enabled = false
+      }
     }
     const onMouseMove = (e: MouseEvent) => {
       if (!drag.current) return
@@ -177,13 +182,17 @@ function EyeLevelController({ posRef, headingRef, pitchRef, eyeCam, mobileKeysRe
       pitchRef.current = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, pitchRef.current))
       drag.current = { x: e.clientX, y: e.clientY }
     }
-    const onMouseUp = () => { drag.current = null }
+    const onMouseUp = () => {
+      drag.current = null
+      if (orbitRef.current) orbitRef.current.enabled = true
+    }
 
     // Touch look in eye view
     const onTouchStart = (e: TouchEvent) => {
       for (const t of Array.from(e.changedTouches)) {
         if (inEye(t.clientX, t.clientY) && !touchLook.current) {
           touchLook.current = { id: t.identifier, x: t.clientX, y: t.clientY }
+          if (orbitRef.current) orbitRef.current.enabled = false
         }
       }
     }
@@ -202,7 +211,10 @@ function EyeLevelController({ posRef, headingRef, pitchRef, eyeCam, mobileKeysRe
       if (!touchLook.current) return
       const cur = touchLook.current
       for (const t of Array.from(e.changedTouches)) {
-        if (t.identifier === cur.id) touchLook.current = null
+        if (t.identifier === cur.id) {
+          touchLook.current = null
+          if (orbitRef.current) orbitRef.current.enabled = true
+        }
       }
     }
 
@@ -333,6 +345,7 @@ export default function App() {
   const headingRef = useRef(0)
   const pitchRef   = useRef(0)
   const mobileKeysRef = useRef({ w: false, a: false, s: false, d: false })
+  const orbitRef = useRef<OrbitControlsImpl | null>(null)
 
   const eyeCam = useMemo(() => {
     const c = new THREE.PerspectiveCamera(75, 1, 0.1, 2000)
@@ -415,6 +428,7 @@ export default function App() {
             pitchRef={pitchRef}
             eyeCam={eyeCam}
             mobileKeysRef={mobileKeysRef}
+            orbitRef={orbitRef}
           />
           <EyeLevelRenderer eyeCam={eyeCam} />
 
@@ -424,7 +438,7 @@ export default function App() {
             </EffectComposer>
           )}
 
-          <OrbitControls makeDefault />
+          <OrbitControls ref={orbitRef} makeDefault />
         </Canvas>
       )}
 
