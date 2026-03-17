@@ -20,7 +20,14 @@
       "WebFetch(domain:threejs-journey.com)",
       "Bash(git commit:*)",
       "Bash(git push:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(npm create:*)",
+      "Bash(npm install:*)",
+      "Bash(npx tailwindcss:*)",
+      "Bash(./node_modules/.bin/tailwindcss init:*)",
+      "Bash(cp /c/Users/hellg/Downloads/ai-lab-tests/workshop/data/weimar/weimar-buildings-3d.geojson /c/Users/hellg/Downloads/ai-lab-tests/isovist-app/public/)",
+      "Bash(cp /c/Users/hellg/Downloads/ai-lab-tests/workshop/data/weimar/weimar-streets.geojson /c/Users/hellg/Downloads/ai-lab-tests/isovist-app/public/)",
+      "Bash(node:*)"
     ]
   }
 }
