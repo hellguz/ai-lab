@@ -258,8 +258,8 @@ export default function App() {
 
   useEffect(() => {
     Promise.all([
-      fetch('/weimar-buildings-3d.geojson').then(r => r.json()),
-      fetch('/weimar-streets.geojson').then(r => r.json()),
+      fetch('./weimar-buildings-3d.geojson').then(r => r.json()),
+      fetch('./weimar-streets.geojson').then(r => r.json()),
     ]).then(([b, s]) => {
       setData(parseData(b, s))
       setLoading(false)
