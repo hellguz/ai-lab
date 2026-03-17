@@ -1,7 +1,6 @@
 import * as React from 'react'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { X } from 'lucide-react'
-import { cn } from '../../lib/utils'
 
 export const Dialog = DialogPrimitive.Root
 export const DialogTrigger = DialogPrimitive.Trigger
@@ -11,10 +10,15 @@ export const DialogClose = DialogPrimitive.Close
 export const DialogOverlay = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Overlay>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
->(({ className, ...props }, ref) => (
+>(({ style, ...props }, ref) => (
   <DialogPrimitive.Overlay
     ref={ref}
-    className={cn('fixed inset-0 z-50 bg-black/60 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0', className)}
+    style={{
+      position: 'fixed', inset: 0, zIndex: 50,
+      background: 'rgba(0,0,0,0.65)',
+      backdropFilter: 'blur(4px)',
+      ...style,
+    }}
     {...props}
   />
 ))
@@ -23,42 +27,45 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName
 export const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => (
+>(({ style, children, ...props }, ref) => (
   <DialogPortal>
     <DialogOverlay />
     <DialogPrimitive.Content
       ref={ref}
-      className={cn(
-        'fixed left-[50%] top-[50%] z-50 w-full max-w-lg translate-x-[-50%] translate-y-[-50%]',
-        'rounded-xl border border-white/10 bg-gray-900/95 backdrop-blur-xl',
-        'shadow-2xl p-6 text-white',
-        'data-[state=open]:animate-in data-[state=closed]:animate-out',
-        'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
-        'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
-        'data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%]',
-        'data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%]',
-        'max-h-[90vh] overflow-y-auto',
-        className
-      )}
+      style={{
+        position: 'fixed',
+        left: '50%', top: '50%',
+        transform: 'translate(-50%, -50%)',
+        zIndex: 51,
+        width: 'calc(100% - 32px)',
+        maxWidth: 480,
+        maxHeight: '90vh',
+        overflowY: 'auto',
+        borderRadius: 16,
+        background: 'rgba(18, 18, 22, 0.97)',
+        border: '1px solid rgba(255,255,255,0.1)',
+        boxShadow: '0 24px 64px rgba(0,0,0,0.6)',
+        padding: '28px 24px 24px',
+        color: '#fff',
+        fontFamily: 'system-ui, sans-serif',
+        ...style,
+      }}
       {...props}
     >
       {children}
-      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 hover:opacity-100 transition-opacity">
-        <X size={18} />
+      <DialogPrimitive.Close
+        style={{
+          position: 'absolute', top: 14, right: 14,
+          width: 28, height: 28, borderRadius: 6,
+          background: 'rgba(255,255,255,0.08)',
+          border: '1px solid rgba(255,255,255,0.12)',
+          color: '#aaa', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}
+      >
+        <X size={14} />
       </DialogPrimitive.Close>
     </DialogPrimitive.Content>
   </DialogPortal>
 ))
 DialogContent.displayName = DialogPrimitive.Content.displayName
-
-export function DialogHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('flex flex-col gap-1.5 mb-5', className)} {...props} />
-}
-
-export function DialogTitle({ className, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
-  return <h2 className={cn('text-xl font-semibold tracking-tight', className)} {...props} />
-}
-
-export function DialogDescription({ className, ...props }: React.HTMLAttributes<HTMLParagraphElement>) {
-  return <p className={cn('text-sm text-gray-400', className)} {...props} />
-}
